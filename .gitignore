@@ -1,0 +1,41 @@
+# ---------- 密钥与凭证：绝不入库 ----------
+.env
+config.ini
+wechat_session.json
+*.pem
+*.key
+
+# ---------- 采集的原始数据（体积大且只增不改，不入库）----------
+data/raw/
+data/processed/
+data/db/*.sqlite
+data/db/*.sqlite-journal
+data/db/*.sqlite-wal
+data/db/*.sqlite-shm
+
+# ---------- 运行产物 ----------
+logs/
+models/
+reports/99_*
+
+# ---------- Python ----------
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 探测/临时脚本 ----------
+.write_probe.tmp
+*.tmp

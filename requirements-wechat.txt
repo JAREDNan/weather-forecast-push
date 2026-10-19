@@ -1,0 +1,15 @@
+# ============================================================
+# 微信推送路线依赖（选配，仅真实推送时需要）
+# 已选定路线：订阅号每日群发（WECHAT_PUSH_CHANNEL=subscription）
+# 安装：pip install -r requirements-wechat.txt
+# ⚠️ 本项目 wechat_manager 直接使用 requests 调微信官方 REST 接口，
+#    wechatpy 仅为可选增强（JS-SDK 签名 / OAuth 网页授权 / 消息加解密），
+#    默认不安装也不影响订阅号群发/预览/模板消息。
+# ============================================================
+
+# 微信官方接口 HTTP 客户端（已含在 requirements.txt，此处列出以明示依赖）
+requests>=2.31.0
+
+# 微信公众号 SDK —— 可选：仅在需要 JS-SDK 签名、OAuth 网页授权、
+# 消息加解密等高级能力时安装（对应 _清单.md 中的说明）
+# wechatpy>=2.1.0
