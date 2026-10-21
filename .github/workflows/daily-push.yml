@@ -1,0 +1,77 @@
+# ============================================================
+# 每日天气推送 —— GitHub Actions 免服务器定时
+# ============================================================
+# 借鉴成熟开源项目（DokiYoloo/CareUEveryDay、kiraniko11/weather-wechat-notify）：
+#   · 无需服务器：GitHub Actions 免费托管定时运行
+#   · 密钥安全：全部经仓库 Secrets 注入环境变量，绝不留档
+#   · 时区换算：cron 使用 UTC，北京时间 = UTC+8
+#
+# 调度（北京时间）：
+#   06:50 触发 → 采集 + 生成文案 → 推送企业微信群机器人（真实发送）
+#          → 生成公众号推送包（供人工手动群发，覆盖全部关注者）
+#
+# 仓库 Secrets 需配置（Settings → Secrets and variables → Actions）：
+#   WECHAT_PUSH_CHANNEL  = wecom_webhook
+#   WECOM_WEBHOOK_URL    = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+#
+# ⚠️ 说明：
+#   1. 本项目 .env 不在仓库中，CI 运行时由 Secrets 环境变量覆盖
+#      （src/config.py 优先读 os.environ，再读 .env），无需创建 .env 文件。
+#   2. --push 内部已完成采集→文案→推送全链路（一次采集），无需再跑 --dry-run。
+#   3. 若 Secrets 未配置，--push 会安全退出（渠道为 dryrun，绝不发送），
+#      同时 --gzh-pack 仍可生成推送包供人工使用。
+# ============================================================
+name: 每日天气推送
+
+on:
+  schedule:
+    # UTC 22:50 = 北京时间 06:50（采集+推送全程一次跑完）
+    - cron: '50 22 * * *'
+  workflow_dispatch:      # 支持手动触发（Actions 页 Run workflow）
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-weather-push
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-wechat.txt
+
+      - name: 推送企业微信群机器人（真实发送，含采集+文案+合规校验）
+        env:
+          WECHAT_PUSH_CHANNEL: ${{ secrets.WECHAT_PUSH_CHANNEL }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+        run: |
+          python main.py --push
+
+      - name: 生成公众号推送包（供人工手动群发，覆盖全部关注者）
+        run: |
+          python main.py --gzh-pack
+
+      - name: 上传推送包与干跑记录（可下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: gzh-pack-${{ github.run_number }}
+          path: |
+            logs/gzh_pack_*.md
+            logs/gzh_pack_*.html
+            logs/dryrun_*.md
+          retention-days: 7

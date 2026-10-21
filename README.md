@@ -100,7 +100,52 @@ python main.py --dry-run
 | `push_hour/minute` | 07:30 | 每日推送时间（Asia/Shanghai） |
 | `attribution_name` | 中央气象台·中国天气网 | 文案署名（《气象法》第二十五条，不可删除） |
 
-## 五、目录结构
+## 五、免服务器云端部署（GitHub Actions）✨
+
+> 借鉴成熟开源项目（`DokiYoloo/CareUEveryDay`、`kiraniko11/weather-wechat-notify`）的
+> 部署模式：**无需任何服务器**，GitHub Actions 免费托管每日定时运行，密钥全部走
+> 仓库 Secrets 注入环境变量（`src/config.py` 优先读环境变量，无需 .env 文件）。
+
+### 启用步骤（一次性，约 3 分钟）
+
+1. **推代码到 GitHub**（Public/Private 均可，Actions 对两者都免费）：
+   ```bash
+   git add .github/workflows/daily-push.yml
+   git commit -m "feat: 添加 GitHub Actions 免服务器每日推送"
+   git push
+   ```
+2. **配置仓库 Secrets**（仓库 Settings → Secrets and variables → Actions →
+   New repository secret）：
+   | Secret 名 | 值 |
+   |---|---|
+   | `WECHAT_PUSH_CHANNEL` | `wecom_webhook` |
+   | `WECOM_WEBHOOK_URL` | 你的企业微信群机器人 Webhook 完整 URL |
+
+3. **确认调度生效**：仓库 Actions 页应出现「每日天气推送」工作流，按
+   **北京时间 06:50** 每天自动执行（cron 为 UTC 22:50，时区已换算）。
+4. **手动触发一次验证**：Actions 页 → 该工作流 → Run workflow →
+   观察「推送企业微信群机器人」步骤结果（errcode=0 即成功）。
+
+### 云端每日产出
+
+| 时间（北京） | 动作 | 结果 |
+|---|---|---|
+| 06:50 | 采集官方数据 + 生成合规文案 | 落库 + `logs/dryrun_*.md` |
+| 06:50+ | 推送企业微信群机器人（真实发送） | 群成员收到天气文案 |
+| 06:50+ | 生成公众号推送包 | 上传到该次运行的 **Artifacts**（保留 7 天） |
+| 任意 | 打开 Artifacts 下载 `gzh_pack_*.md/.html` | 人工 1 分钟手动群发公众号，覆盖全部关注者 |
+
+### ⚠️ 注意事项
+
+- **未配置 Secrets 时**：`--push` 会安全退出（渠道为 dryrun，绝不发送任何消息），
+  `--gzh-pack` 仍正常产出推送包——适合先观察、后开闸。
+- **公众号 API 群发**在 GitHub Actions 上仍不可用（未认证订阅号 48001 权限限制，
+  与部署位置无关），因此云端保持「企业微信自动 + 公众号手动」双通道并行。
+- 每日会向官方源发起约 2 次请求（`--push` 1 次 + `--gzh-pack` 1 次），
+  爬虫内置 ≥2s 限速与熔断保护，远低于官方合规上限。
+- Actions 免费额度对个人仓库非常充裕（每月 2000 分钟，本项目每次 <1 分钟）。
+
+## 六、目录结构
 
 ```
 G:\气象预报平台\
@@ -109,10 +154,12 @@ G:\气象预报平台\
 ├── .env.example           # 密钥模板（真实值填 .env，已 gitignore）
 ├── requirements.txt       # 核心依赖
 ├── requirements-wechat.txt# 微信推送路线依赖（选配）
+├── .github\workflows\daily-push.yml  # GitHub Actions 免服务器每日推送
 ├── src\
 │   ├── weather_client.py      # 数据采集编排 + 多源归并 + 降级链
 │   ├── content_generator.py   # 文案生成（含法规署名与合规拦截）
 │   ├── wechat_manager.py      # 微信推送（订阅号三步流/预览/多路线）
+│   ├── gzh_pack.py            # 公众号推送包生成（人工手动群发辅助）
 │   ├── scheduler_main.py      # APScheduler 调度 + 告警升级
 │   ├── daily_job.py           # 每日任务胶水层 + 合规闸门
 │   ├── config.py              # 配置加载（ini + .env）
@@ -123,12 +170,12 @@ G:\气象预报平台\
 │   ├── raw\               # 原始报文（按日期分目录，只增不改）
 │   ├── db\weather.sqlite  # 结构化数据
 ├── reports\               # 调研/合规/数据/模型/部署 报告
-├── logs\                  # 运行日志 + 干跑文案
-├── tests\                 # pytest 测试（175 项，全通过）
+├── logs\                  # 运行日志 + 干跑文案 + 推送包
+├── tests\                 # pytest 测试（186 项，全通过）
 └── THIRD_PARTY_LICENSES.md
 ```
 
-## 六、合规要点（务必知晓）
+## 七、合规要点（务必知晓）
 
 - **《气象法》第二十五条**：传播气象预报必须使用气象主管机构所属台站提供的适时信息，**标明发布时间和台站名称**。→ 每条文案末尾自动附「信息来源 + 发布时间」，缺失即拒绝推送（测试覆盖）。
 - **《气象预报发布与传播管理办法》第九条**：不得自行更改预报内容和结论。→ 官方天气现象/气温原样保留，仅做生活化转译。
@@ -136,7 +183,7 @@ G:\气象预报平台\
 - **robots.txt 与限速**：官方源均允许抓取；单域名请求间隔 ≥2 秒、失败熔断退避（详见 `reports/02`）。
 - **密钥不落地**：所有密钥在 `.env`（已 gitignore），代码/日志/报告零密钥。
 
-## 七、数据源
+## 八、数据源
 
 | 优先级 | 数据源 | 用途 | 合规 |
 |---|---|---|---|
@@ -144,16 +191,19 @@ G:\气象预报平台\
 | 2 | 中国天气网 weather.com.cn | 实况 + 逐时 + 指数（主通道） | ✅ 官方公开接口 |
 | 5 | 和风天气 QWeather | 生活指数增强（可选项，待 Key） | ✅ 官方 API |
 
-## 八、测试
+## 九、测试
 
 ```bash
 python -m pytest tests -q
-# 175 passed（含法规合规、解析器、采集器、编码表）
+# 186 passed（含法规合规、解析器、采集器、编码表、推送包）
 ```
 
-## 九、部署（摘要）
+## 十、部署（摘要）
 
-完整方案见 `reports/05_部署与运维手册.md`。推荐：**国内轻量云服务器（2G 内存即可）+ systemd 定时任务**，优于 PythonAnywhere（免费版有出站白名单与定时任务限制，且境外访问国内气象站/微信接口延迟高）。
+完整方案见 `reports/05_部署与运维手册.md`。三条路径任选：
+1. **GitHub Actions 免服务器（推荐，零成本）**：见上文第五章，无需服务器即可每日自动推送。
+2. **国内轻量云服务器（2G 内存即可）+ systemd 定时任务**：优于 PythonAnywhere（免费版有出站白名单与定时任务限制，且境外访问国内气象站/微信接口延迟高）。
+3. **本机 `python main.py --serve` 常驻**：适合开发调试，关机即停。
 
 ---
 
